@@ -213,7 +213,7 @@ export default function App() {
 
             <div className="seat-table-slot seat-table-slot--left">
               <AnimatePresence>
-                {effectivePlayCards && playing.lastPlayPlayer === leftPlayer.id && (
+                {effectivePlayCards && playing.lastPlayPlayer === leftPlayer.id ? (
                   <motion.div
                     key={`left-play-${effectivePlayCards.map((card) => card.id).join('_')}`}
                     initial={{ opacity: 0, x: -16 }}
@@ -223,10 +223,7 @@ export default function App() {
                   >
                     <PlayedCards cards={effectivePlayCards} align="left" />
                   </motion.div>
-                )}
-              </AnimatePresence>
-              <AnimatePresence>
-                {seatLabel(leftPlayer.id) && (
+                ) : seatLabel(leftPlayer.id) ? (
                   <motion.div
                     key={`left-label-${seatLabel(leftPlayer.id)?.id}`}
                     initial={{ opacity: 0, y: 10 }}
@@ -236,7 +233,7 @@ export default function App() {
                   >
                     {seatLabel(leftPlayer.id)?.label}
                   </motion.div>
-                )}
+                ) : null}
               </AnimatePresence>
             </div>
           </div>
@@ -306,7 +303,7 @@ export default function App() {
           <div className="seat-stage seat-stage--right">
             <div className="seat-table-slot seat-table-slot--right">
               <AnimatePresence>
-                {effectivePlayCards && playing.lastPlayPlayer === rightPlayer.id && (
+                {effectivePlayCards && playing.lastPlayPlayer === rightPlayer.id ? (
                   <motion.div
                     key={`right-play-${effectivePlayCards.map((card) => card.id).join('_')}`}
                     initial={{ opacity: 0, x: 16 }}
@@ -316,20 +313,17 @@ export default function App() {
                   >
                     <PlayedCards cards={effectivePlayCards} align="right" />
                   </motion.div>
-                )}
-              </AnimatePresence>
-              <AnimatePresence>
-                {seatLabel(rightPlayer.id) && (
+                ) : seatLabel(rightPlayer.id) ? (
                   <motion.div
                     key={`right-label-${seatLabel(rightPlayer.id)?.id}`}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
-                    className="seat-bubble"
+                    className="seat-bubble seat-bubble--right"
                   >
                     {seatLabel(rightPlayer.id)?.label}
                   </motion.div>
-                )}
+                ) : null}
               </AnimatePresence>
             </div>
 
@@ -346,7 +340,7 @@ export default function App() {
         <footer className="player-dock">
           <div className="player-dock__topline">
             <AnimatePresence>
-              {effectivePlayCards && playing.lastPlayPlayer === playerId && (
+              {effectivePlayCards && playing.lastPlayPlayer === playerId ? (
                 <motion.div
                   key={`self-play-${effectivePlayCards.map((card) => card.id).join('_')}`}
                   initial={{ opacity: 0, y: 12 }}
@@ -355,10 +349,7 @@ export default function App() {
                 >
                   <PlayedCards cards={effectivePlayCards} />
                 </motion.div>
-              )}
-            </AnimatePresence>
-            <AnimatePresence>
-              {seatLabel(playerId) && (
+              ) : seatLabel(playerId) ? (
                 <motion.div
                   key={`self-label-${seatLabel(playerId)?.id}`}
                   initial={{ opacity: 0, y: 10 }}
@@ -368,14 +359,14 @@ export default function App() {
                 >
                   {seatLabel(playerId)?.label}
                 </motion.div>
-              )}
+              ) : null}
             </AnimatePresence>
           </div>
 
-          {phase === 'playing' && (
+          {phase === 'playing' && playing.currentPlayer === playerId && (
             <GameControls
-              canPlay={playing.currentPlayer === playerId}
-              canPass={playing.currentPlayer === playerId && playing.lastPlay !== null}
+              canPlay
+              canPass={playing.lastPlay !== null}
               canHint={hintAvailable}
               onPlay={playerPlayCards}
               onPass={playerPass}
@@ -384,14 +375,16 @@ export default function App() {
             />
           )}
 
-          <PlayerBadge
-            playerId={humanPlayer.id}
-            currentPlayerId={currentTurnId}
-            name={getPlayerName(humanPlayer.id, playerId)}
-            cardCount={selfVisibleCount}
-            isLandlord={humanPlayer.isLandlord}
-            phase={phase}
-          />
+          <div className="self-badge-corner">
+            <PlayerBadge
+              playerId={humanPlayer.id}
+              currentPlayerId={currentTurnId}
+              name={getPlayerName(humanPlayer.id, playerId)}
+              cardCount={selfVisibleCount}
+              isLandlord={humanPlayer.isLandlord}
+              phase={phase}
+            />
+          </div>
 
           <PlayerHand
             cards={selfDealingCards}

@@ -64,15 +64,15 @@ export function CardView({
     >
       {isJoker ? (
         <>
-          <div className="card-corner card-corner--top" style={{ color, fontSize: Math.max(10, rankSize - 4) }}>
-            <span className="card-rank-joker">JOKER</span>
+          <div className="card-corner card-corner--top" style={{ color, fontSize: Math.max(14, rankSize) }}>
+            <span>{card.rank === 'BJ' ? '♛' : '♚'}</span>
           </div>
           <div className="card-center" style={{ color, fontSize: centerSize + 4 }}>
             {card.rank === 'BJ' ? '♛' : '♚'}
           </div>
           {!topOnly && (
-            <div className="card-corner card-corner--bottom" style={{ color, fontSize: Math.max(11, rankSize - 3) }}>
-              <span>{card.rank}</span>
+            <div className="card-corner card-corner--bottom" style={{ color, fontSize: Math.max(14, rankSize) }}>
+              <span>{card.rank === 'BJ' ? '♛' : '♚'}</span>
             </div>
           )}
         </>

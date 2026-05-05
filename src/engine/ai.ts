@@ -242,20 +242,165 @@ export function aiDecideBid(hand: Card[], currentHighestBid: number): number {
   return 0
 }
 
+// Fast hint: targeted play generation instead of 2^N enumeration
 export function findHintPlay(hand: Card[], lastPlay: PlayResult | null): PlayResult | null {
-  const allPlays = deduplicatePlays(generateAllPlays(hand))
-  const legalPlays = allPlays.filter((play) => canBeat(play, lastPlay))
-  if (legalPlays.length === 0) return null
+  // Group cards by value, sorted ascending
+  const byValue = new Map<number, Card[]>()
+  for (const c of hand) {
+    if (!byValue.has(c.value)) byValue.set(c.value, [])
+    byValue.get(c.value)!.push(c)
+  }
+  const values = [...byValue.keys()].sort((a, b) => a - b)
 
-  legalPlays.sort((left, right) => {
-    if (left.type === 'rocket') return 1
-    if (right.type === 'rocket') return -1
-    if (left.type === 'bomb' && right.type !== 'bomb') return 1
-    if (right.type === 'bomb' && left.type !== 'bomb') return -1
-    if (left.cards.length !== right.cards.length) return right.cards.length - left.cards.length
-    return left.weight - right.weight
-  })
+  // No last play → free play: pick smallest single
+  if (!lastPlay) {
+    const smallest = values[0]
+    if (smallest == null) return null
+    const cards = byValue.get(smallest)!
+    return detectHand([cards[0]])
+  }
 
-  const normalPlay = legalPlays.find((play) => play.type !== 'bomb' && play.type !== 'rocket')
-  return normalPlay ?? legalPlays[0]
+  // Must beat: try same-type plays first, then bombs
+  const hint = tryBeatType(lastPlay, byValue, values, hand)
+  if (hint) return hint
+
+  // Try bombs
+  return tryFindBomb(byValue, values, hand, lastPlay)
+}
+
+function tryBeatType(
+  lastPlay: PlayResult,
+  byValue: Map<number, Card[]>,
+  values: number[],
+  hand: Card[],
+): PlayResult | null {
+  const minW = lastPlay.weight
+
+  switch (lastPlay.type) {
+    case 'single': {
+      const v = values.find(val => val > minW)
+      if (v != null) return detectHand([byValue.get(v)![0]])
+      return null
+    }
+    case 'pair': {
+      const v = values.find(val => val > minW && byValue.get(val)!.length >= 2)
+      if (v != null) return detectHand(byValue.get(v)!.slice(0, 2))
+      return null
+    }
+    case 'triple': {
+      const v = values.find(val => val > minW && byValue.get(val)!.length >= 3)
+      if (v != null) return detectHand(byValue.get(v)!.slice(0, 3))
+      return null
+    }
+    case 'triple_one': {
+      const v = values.find(val => val > minW && byValue.get(val)!.length >= 3)
+      if (v == null) return null
+      const main = byValue.get(v)!.slice(0, 3)
+      const kicker = hand.find(c => c.value !== v)
+      if (kicker) return detectHand([...main, kicker])
+      return null
+    }
+    case 'triple_two': {
+      const v = values.find(val => val > minW && byValue.get(val)!.length >= 3)
+      if (v == null) return null
+      const main = byValue.get(v)!.slice(0, 3)
+      const kickerV = values.find(val => val !== v && byValue.get(val)!.length >= 2)
+      if (kickerV != null) return detectHand([...main, ...byValue.get(kickerV)!.slice(0, 2)])
+      return null
+    }
+    case 'bomb': {
+      const v = values.find(val => val > minW && byValue.get(val)!.length >= 4)
+      if (v != null) return detectHand(byValue.get(v)!.slice(0, 4))
+      // Check rocket
+      if (minW < 17 && byValue.has(16) && byValue.has(17)) {
+        return detectHand([byValue.get(16)![0], byValue.get(17)![0]])
+      }
+      return null
+    }
+    case 'rocket':
+      return null // nothing beats rocket
+    case 'straight': {
+      const len = lastPlay.cards.length
+      // Try all consecutive sequences of 'len' cards, each > minW
+      for (const start of values) {
+        if (start <= minW || start > 14) continue
+        const seqVals: number[] = []
+        for (let v = start; v < start + len && v <= 14; v++) {
+          if (!byValue.has(v)) break
+          seqVals.push(v)
+        }
+        if (seqVals.length === len) {
+          const cards: Card[] = []
+          for (const v of seqVals) cards.push(byValue.get(v)![0])
+          return detectHand(cards)
+        }
+      }
+      return null
+    }
+    case 'straight_pairs': {
+      const pairs = lastPlay.cards.length / 2
+      for (const start of values) {
+        if (start <= minW || start > 14) continue
+        let ok = true
+        for (let v = start; v < start + pairs && v <= 14; v++) {
+          if ((byValue.get(v)?.length ?? 0) < 2) { ok = false; break }
+        }
+        if (ok) {
+          const cards: Card[] = []
+          for (let v = start; v < start + pairs; v++) {
+            cards.push(...byValue.get(v)!.slice(0, 2))
+          }
+          return detectHand(cards)
+        }
+      }
+      return null
+    }
+    case 'plane':
+    case 'plane_singles':
+    case 'plane_pairs': {
+      const planeLen = Math.floor(lastPlay.cards.length / 3)
+      // Try each possible plane length
+      for (let tCount = planeLen; tCount <= planeLen + 2; tCount++) {
+        if (tCount < 2) continue
+        for (const start of values) {
+          if (start <= minW || start > 14) continue
+          let ok = true
+          for (let v = start; v < start + tCount && v <= 14; v++) {
+            if ((byValue.get(v)?.length ?? 0) < 3) { ok = false; break }
+          }
+          if (!ok) continue
+          const main: Card[] = []
+          for (let v = start; v < start + tCount; v++) {
+            main.push(...byValue.get(v)!.slice(0, 3))
+          }
+          const result = detectHand(main)
+          if (result && canBeat(result, lastPlay)) return result
+        }
+      }
+      return null
+    }
+    default:
+      return null
+  }
+}
+
+function tryFindBomb(
+  byValue: Map<number, Card[]>,
+  values: number[],
+  _hand: Card[],
+  lastPlay: PlayResult | null,
+): PlayResult | null {
+  // Find smallest bomb
+  for (const v of values) {
+    if (byValue.get(v)!.length >= 4) {
+      const bomb = detectHand(byValue.get(v)!.slice(0, 4))
+      if (bomb && (!lastPlay || canBeat(bomb, lastPlay))) return bomb
+    }
+  }
+  // Rocket
+  if (byValue.has(16) && byValue.has(17)) {
+    const rocket = detectHand([byValue.get(16)![0], byValue.get(17)![0]])
+    if (rocket && (!lastPlay || canBeat(rocket, lastPlay))) return rocket
+  }
+  return null
 }

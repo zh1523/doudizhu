@@ -21,15 +21,10 @@ export function PlayerBadge({
       <div className={`player-badge__avatar ${isLandlord ? 'is-landlord' : 'is-farmer'}`}>
         {name.slice(0, 1)}
       </div>
-      <div className="player-badge__meta">
-        <div className="player-badge__name">{name}</div>
-        <div className="player-badge__tags">
-          <span className={`player-role ${isLandlord ? 'is-landlord' : 'is-farmer'}`}>
-            {isLandlord ? '地主' : '农民'}
-          </span>
-          <span className="player-count">{cardCount} 张</span>
-        </div>
-      </div>
+      <span className={`player-role ${isLandlord ? 'is-landlord' : 'is-farmer'}`}>
+        {isLandlord ? '地主' : '农民'}
+      </span>
+      <span className="player-count">{cardCount}张</span>
     </div>
   )
 }

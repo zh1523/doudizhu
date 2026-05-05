@@ -193,32 +193,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
     if (gameState.playing.currentPlayer !== playerId) return
 
     const humanPlayer = gameState.players[playerId]
-    let partnerHandLen = 0
-    for (let index = 0; index < 3; index += 1) {
-      if (index !== playerId && gameState.players[index].isLandlord === humanPlayer.isLandlord) {
-        partnerHandLen = gameState.players[index].hand.length
-      }
-    }
-
-    const hintedPlay = aiDecideCards(
-      humanPlayer.hand,
-      gameState.playing.lastPlay,
-      humanPlayer.isLandlord,
-      partnerHandLen,
-      gameState.playing.lastPlayPlayer,
-      playerId,
-      gameState.players.map((player) => player.hand.length),
-      gameState.players.find((player) => player.isLandlord)?.id ?? -1,
-    )
-
-    const fallbackPlay = hintedPlay ?? findHintPlay(humanPlayer.hand, gameState.playing.lastPlay)
-    if (!fallbackPlay) {
+    const hintedPlay = findHintPlay(humanPlayer.hand, gameState.playing.lastPlay)
+    if (!hintedPlay) {
       set({ selectedCardIds: new Set() })
       return
     }
 
     set({
-      selectedCardIds: new Set(fallbackPlay.cards.map((card) => card.id)),
+      selectedCardIds: new Set(hintedPlay.cards.map((card) => card.id)),
     })
   },
 
