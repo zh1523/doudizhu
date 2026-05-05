@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(node client/scripts/ocr.mjs \"/tmp/ScreenShot_2026-05-06_021230_431.png\")"
+    ]
+  }
+}
