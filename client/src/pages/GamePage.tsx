@@ -1,12 +1,39 @@
-import { useEffect, useState } from 'react'
-import { useNetworkStore } from '../store/networkStore'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, useRef, useState } from 'react'
 import { findHintPlay } from '../engine/ai'
+import type { Card } from '../engine/card'
+import { BiddingPanel } from '../components/BiddingPanel'
 import { CardView } from '../components/Card'
 import { GameControls } from '../components/GameControls'
-import { PlayerHand } from '../components/PlayerHand'
 import { PlayerBadge } from '../components/GameInfo'
-import { BiddingPanel } from '../components/BiddingPanel'
-import type { Card } from '../engine/card'
+import { PlayerHand } from '../components/PlayerHand'
+import { useNetworkStore } from '../store/networkStore'
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function PlayedCards({ cards, align = 'center' }: { cards: Card[]; align?: 'left' | 'center' | 'right' }) {
+  const width = 68
+  const count = cards.length
+  const step = count > 1 ? Math.min(width * 0.56, 42) : 0
+  const totalWidth = width + step * Math.max(0, count - 1)
+  return (
+    <div className={`played-fan played-fan--${align}`} style={{ width: totalWidth, height: 126 }}>
+      {cards.map((card, index) => (
+        <motion.div
+          key={card.id}
+          className="played-fan__card"
+          initial={{ opacity: 0, y: 12, scale: 0.9 }}
+          animate={{ opacity: 1, y: 0, scale: 1, left: index * step }}
+          transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+        >
+          <CardView card={card} width={width} topOnly />
+        </motion.div>
+      ))}
+    </div>
+  )
+}
 
 export function GamePage() {
   const gameState = useNetworkStore(s => s.gameState)
@@ -18,11 +45,43 @@ export function GamePage() {
   const sendBid = useNetworkStore(s => s.sendBid)
   const sendPlay = useNetworkStore(s => s.sendPlay)
   const sendPass = useNetworkStore(s => s.sendPass)
+  const notification = useNetworkStore(s => s.notification)
+
+  const [viewportWidth, setViewportWidth] = useState(typeof window === 'undefined' ? 1440 : window.innerWidth)
+  const [showBottomReveal, setShowBottomReveal] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+
+  const previousPhase = useRef(gameState?.phase)
+
+  // Resize handler
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth)
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
+
+  // Bottom reveal when transitioning to playing
+  useEffect(() => {
+    if (gameState && previousPhase.current !== 'playing' && gameState.phase === 'playing') {
+      setShowBottomReveal(true)
+      const timer = window.setTimeout(() => setShowBottomReveal(false), 1600)
+      previousPhase.current = gameState.phase
+      return () => window.clearTimeout(timer)
+    }
+    if (gameState) previousPhase.current = gameState.phase
+  }, [gameState?.phase])
+
+  // Reset card selection on phase/turn change
+  useEffect(() => {
+    setSelectedIds(new Set())
+  }, [gameState?.phase, gameState?.playing?.currentPlayer, gameState?.bidding?.currentBidder])
 
   if (!currentRoom) return null
 
-  // === Pre-game state: waiting for game to start ===
+  // ============================================================
+  // Pre-game state: waiting for game to start
+  // ============================================================
   if (!gameState) {
     const players = currentRoom.players
     const onlinePlayers = players.filter(p => p.isOnline)
@@ -37,7 +96,6 @@ export function GamePage() {
     return (
       <div className="table-shell">
         <div className="table-shell__background" />
-
         <div className="table-layout">
           <header className="table-header">
             <div className="table-brand">
@@ -62,8 +120,7 @@ export function GamePage() {
           <aside className="seat-panel seat-panel--left">
             {seat1Player ? (
               <PlayerBadge playerId={1} currentPlayerId={-1}
-                name={seat1Player.name} cardCount={0}
-                isLandlord={false} phase="idle" />
+                name={seat1Player.name} cardCount={0} isLandlord={false} phase="idle" />
             ) : (
               <div className="player-badge" style={{ opacity: 0.4 }}>
                 <div className="player-badge__avatar" style={{ background: 'linear-gradient(135deg, #22c55e, #16a34a)' }}>?</div>
@@ -105,8 +162,7 @@ export function GamePage() {
           <aside className="seat-panel seat-panel--right">
             {seat2Player ? (
               <PlayerBadge playerId={2} currentPlayerId={-1}
-                name={seat2Player.name} cardCount={0}
-                isLandlord={false} phase="idle" />
+                name={seat2Player.name} cardCount={0} isLandlord={false} phase="idle" />
             ) : (
               <div className="player-badge" style={{ opacity: 0.4 }}>
                 <div className="player-badge__avatar" style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)' }}>?</div>
@@ -125,8 +181,7 @@ export function GamePage() {
           <footer className="player-dock">
             <div className="self-badge-corner">
               <PlayerBadge playerId={0} currentPlayerId={-1}
-                name={selfPlayer?.name ?? '你'} cardCount={0}
-                isLandlord={false} phase="idle" />
+                name={selfPlayer?.name ?? '你'} cardCount={0} isLandlord={false} phase="idle" />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 80 }}>
               <span className={`px-3 py-1 rounded-full text-xs font-bold ${selfReady ? 'text-yellow-400 bg-yellow-500/10' : 'text-white/30 bg-white/5'}`}>
@@ -137,35 +192,53 @@ export function GamePage() {
         </div>
 
         {gameOver && (
-          <div className="result-overlay">
-            <div className="result-panel">
-              <h1 className={`result-panel__title ${gameOver.winner === 0 ? 'is-win' : 'is-loss'}`}>
-                {gameOver.winner === 0 ? '你赢了！' : '你输了'}
-              </h1>
-              <div className="result-panel__stats"><span>倍数 ×{gameOver.multiplier}</span></div>
-              <button onClick={leaveRoom} className="result-panel__button">返回大厅</button>
+          <div className="result-overlay" style={{ background: 'transparent', pointerEvents: 'none', alignItems: 'flex-start', paddingTop: 60 }}>
+            <div style={{
+              padding: '14px 24px', borderRadius: 14, color: 'white', fontSize: 15, fontWeight: 700,
+              background: gameOver.winner === 0 ? 'rgba(240,180,40,0.2)' : 'rgba(255,255,255,0.08)',
+              border: `1px solid ${gameOver.winner === 0 ? 'rgba(255,210,80,0.3)' : 'rgba(255,255,255,0.1)'}`,
+              pointerEvents: 'auto', textAlign: 'center', letterSpacing: '0.04em',
+            }}>
+              {gameOver.winner === 0 ? '你赢了！' : '你输了'} · 倍数 ×{gameOver.multiplier}
             </div>
+          </div>
+        )}
+
+        {notification && (
+          <div className="result-overlay" style={{ background: 'transparent', pointerEvents: 'none', alignItems: 'flex-end', paddingBottom: 80 }}>
+            <div style={{
+              padding: '10px 20px', borderRadius: 12, color: 'white', fontSize: 14, fontWeight: 600,
+              background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(255,255,255,0.1)',
+              pointerEvents: 'auto',
+            }}>{notification}</div>
           </div>
         )}
       </div>
     )
   }
 
-  // === In-game state: dealing / bidding / playing ===
-  const { phase, players: gsPlayers, bottom, playing, bidding, dealing } = gameState
+  // ============================================================
+  // In-game state: dealing / bidding / playing
+  // ============================================================
+  const { phase, players: gsPlayers, playing, bottom, dealing, bidding } = gameState
   const selfPlayer = gsPlayers[0]
   const leftPlayer = gsPlayers[1]
   const rightPlayer = gsPlayers[2]
-
   const currentTurnId = phase === 'bidding' ? bidding.currentBidder
     : phase === 'playing' ? playing.currentPlayer
     : -1
   const isMyTurn = currentTurnId === 0
+  const selfHandWidth = clamp(viewportWidth - 420, 620, 1100)
 
-  const getPlayerName = (seat: number) => {
-    const p = currentRoom.players.find(pl => pl.seat === seat)
-    return p?.name ?? `玩家${seat + 1}`
-  }
+  // Pre-rotate room players to align with game state (viewer always at index 0)
+  const mySeat = currentRoom.players.find(p => p.id === playerId)?.seat ?? 0
+  const rotatedRoomPlayers = [
+    currentRoom.players.find(p => p.seat === (mySeat + 0) % 3),
+    currentRoom.players.find(p => p.seat === (mySeat + 1) % 3),
+    currentRoom.players.find(p => p.seat === (mySeat + 2) % 3),
+  ]
+  const getPlayerName = (seat: number) => rotatedRoomPlayers[seat]?.name ?? `玩家${seat + 1}`
+  const selfName = getPlayerName(0)
 
   const toggleCard = (id: string) => {
     if (phase !== 'playing' || !isMyTurn) return
@@ -183,23 +256,34 @@ export function GamePage() {
   const handleHint = () => {
     if (phase !== 'playing' || !isMyTurn) return
     const hint = findHintPlay(selfPlayer.hand, playing.lastPlay)
-    if (hint) setSelectedIds(new Set(hint.cards.map(c => c.id)))
+    if (!hint) return
+    const hintIds = new Set(hint.cards.map(c => c.id))
+    // Toggle: if hint cards are already selected, deselect them
+    if (selectedIds.size === hintIds.size && [...hintIds].every(id => selectedIds.has(id))) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(hintIds)
+    }
   }
-
-  // Reset selection when phase or turn changes
-  useEffect(() => {
-    setSelectedIds(new Set())
-  }, [phase, isMyTurn])
 
   const hintAvailable = phase === 'playing' && isMyTurn
     && findHintPlay(selfPlayer.hand, playing.lastPlay) !== null
 
-  const leftVisible = phase === 'dealing' ? dealing.visibleCounts[leftPlayer.id] : leftPlayer.hand.length
-  const rightVisible = phase === 'dealing' ? dealing.visibleCounts[rightPlayer.id] : rightPlayer.hand.length
+  const leftVisible = phase === 'dealing' ? dealing.visibleCounts[1] : leftPlayer.hand.length
+  const rightVisible = phase === 'dealing' ? dealing.visibleCounts[2] : rightPlayer.hand.length
   const selfVisible = phase === 'dealing' ? dealing.visibleCounts[0] : selfPlayer.hand.length
+
   const selfCards = phase === 'dealing'
     ? dealing.previewHands[0].slice(0, selfVisible)
     : selfPlayer.hand
+
+  const effectivePlayCards = phase === 'playing' && playing.lastPlay && playing.lastPlayPlayer >= 0
+    ? playing.lastPlay.cards
+    : null
+
+  const hiddenBottomCards: Card[] = Array.from({ length: 3 }, (_, i) => ({
+    suit: 'spade', rank: '', value: 0, id: `bottom_back_${i}`,
+  }))
 
   const centerStatus = (() => {
     if (phase === 'dealing') return `发牌中 ${dealing.dealtCount} / 51`
@@ -210,7 +294,7 @@ export function GamePage() {
     }
     if (phase === 'playing') {
       if (playing.lastPlay === null) {
-        return playing.currentPlayer === 0 ? '新的一轮，请出牌' : '等待其他玩家出牌'
+        return playing.currentPlayer === 0 ? '新的一轮，请出牌' : '等待下一位出牌'
       }
       return playing.currentPlayer === 0
         ? '轮到你出牌'
@@ -226,11 +310,10 @@ export function GamePage() {
       <div className="table-layout">
         <header className="table-header">
           <div className="table-brand">
-            <span className="table-brand__eyebrow">
-              {currentRoom.mode === 'ai' ? 'AI 对局' : '玩家对局'}
-            </span>
-            <h1>房间 {currentRoom.id.replace('room_', '')}</h1>
+            <span className="table-brand__eyebrow">现代牌桌</span>
+            <h1>斗地主</h1>
           </div>
+
           <div className="table-status">
             <span>{centerStatus}</span>
             {phase === 'playing' && (
@@ -241,14 +324,19 @@ export function GamePage() {
               </>
             )}
           </div>
-          <div className="bottom-pile">
-            <div className="bottom-pile__label">底牌</div>
+
+          <motion.div className={`bottom-pile ${showBottomReveal ? 'is-revealed' : ''}`} layout>
+            <div className="bottom-pile__label">
+              {phase === 'playing' ? '地主底牌' : '底牌'}
+            </div>
             <div className="bottom-pile__cards">
-              {(phase === 'playing' ? bottom : [{ suit: 'spade', rank: '', value: 0, id: 'b1' } as Card, { suit: 'spade', rank: '', value: 0, id: 'b2' } as Card, { suit: 'spade', rank: '', value: 0, id: 'b3' } as Card]).map(card => (
-                <CardView key={card.id} card={card} faceDown={phase !== 'playing'} width={42} />
+              {(phase === 'playing' ? bottom : hiddenBottomCards).map(card => (
+                <motion.div key={card.id} layout>
+                  <CardView card={card} faceDown={phase !== 'playing'} width={42} />
+                </motion.div>
               ))}
             </div>
-          </div>
+          </motion.div>
         </header>
 
         {/* Left: seat 1 */}
@@ -256,15 +344,25 @@ export function GamePage() {
           <PlayerBadge playerId={1} currentPlayerId={currentTurnId}
             name={getPlayerName(1)} cardCount={leftVisible}
             isLandlord={leftPlayer.isLandlord} phase={phase} />
+
           <div className="seat-stage seat-stage--left">
             <PlayerHand cards={leftPlayer.hand} layout="side" faceDown
               countOverride={leftVisible} align="left" />
+
             <div className="seat-table-slot seat-table-slot--left">
-              {phase === 'playing' && playing.lastPlay && playing.lastPlayPlayer === 1 && (
-                <div className="flex gap-0.5">
-                  {playing.lastPlay.cards.map((c: Card) => <CardView key={c.id} card={c} width={68} topOnly />)}
-                </div>
-              )}
+              <AnimatePresence>
+                {effectivePlayCards && playing.lastPlayPlayer === 1 ? (
+                  <motion.div
+                    key={`left-play-${effectivePlayCards.map(c => c.id).join('_')}`}
+                    initial={{ opacity: 0, x: -16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -10 }}
+                    className="seat-play-anchor"
+                  >
+                    <PlayedCards cards={effectivePlayCards} align="left" />
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </div>
           </div>
         </aside>
@@ -279,10 +377,13 @@ export function GamePage() {
           {phase === 'dealing' && (
             <div className="table-center__panel">
               <div className="table-center__title">发牌中</div>
+              <div className="table-center__subtitle">手牌会从 0 张逐步增长到完整手牌</div>
               <div className="deal-progress">
                 <div className="deal-progress__track">
-                  <div className="deal-progress__fill"
-                    style={{ width: `${(dealing.dealtCount / 51) * 100}%` }} />
+                  <motion.div
+                    className="deal-progress__fill"
+                    animate={{ width: `${(dealing.dealtCount / 51) * 100}%` }}
+                  />
                 </div>
                 <span>{dealing.dealtCount} / 51</span>
               </div>
@@ -319,14 +420,24 @@ export function GamePage() {
           <PlayerBadge playerId={2} currentPlayerId={currentTurnId}
             name={getPlayerName(2)} cardCount={rightVisible}
             isLandlord={rightPlayer.isLandlord} phase={phase} />
+
           <div className="seat-stage seat-stage--right">
             <div className="seat-table-slot seat-table-slot--right">
-              {phase === 'playing' && playing.lastPlay && playing.lastPlayPlayer === 2 && (
-                <div className="flex gap-0.5">
-                  {playing.lastPlay.cards.map((c: Card) => <CardView key={c.id} card={c} width={68} topOnly />)}
-                </div>
-              )}
+              <AnimatePresence>
+                {effectivePlayCards && playing.lastPlayPlayer === 2 ? (
+                  <motion.div
+                    key={`right-play-${effectivePlayCards.map(c => c.id).join('_')}`}
+                    initial={{ opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 10 }}
+                    className="seat-play-anchor"
+                  >
+                    <PlayedCards cards={effectivePlayCards} align="right" />
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </div>
+
             <PlayerHand cards={rightPlayer.hand} layout="side" faceDown
               countOverride={rightVisible} align="right" />
           </div>
@@ -335,11 +446,18 @@ export function GamePage() {
         {/* Bottom: self (seat 0) */}
         <footer className="player-dock">
           <div className="player-dock__topline">
-            {phase === 'playing' && playing.lastPlay && playing.lastPlayPlayer === 0 && (
-              <div className="flex gap-0.5">
-                {playing.lastPlay.cards.map((c: Card) => <CardView key={c.id} card={c} width={68} topOnly />)}
-              </div>
-            )}
+            <AnimatePresence>
+              {effectivePlayCards && playing.lastPlayPlayer === 0 ? (
+                <motion.div
+                  key={`self-play-${effectivePlayCards.map(c => c.id).join('_')}`}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                >
+                  <PlayedCards cards={effectivePlayCards} />
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
           </div>
 
           {phase === 'playing' && isMyTurn && (
@@ -349,7 +467,7 @@ export function GamePage() {
 
           <div className="self-badge-corner">
             <PlayerBadge playerId={0} currentPlayerId={currentTurnId}
-              name={getPlayerName(0)} cardCount={selfVisible}
+              name={`${selfName} (你)`} cardCount={selfVisible}
               isLandlord={selfPlayer.isLandlord} phase={phase} />
           </div>
 
@@ -357,19 +475,32 @@ export function GamePage() {
             selectedIds={phase === 'playing' ? selectedIds : new Set()}
             onToggleCard={toggleCard}
             disabled={phase !== 'playing' || !isMyTurn}
-            layout="self" availableWidth={800} />
+            layout="self"
+            countOverride={selfVisible}
+            availableWidth={selfHandWidth} />
         </footer>
       </div>
 
       {gameOver && (
-        <div className="result-overlay">
-          <div className="result-panel">
-            <h1 className={`result-panel__title ${gameOver.winner === 0 ? 'is-win' : 'is-loss'}`}>
-              {gameOver.winner === 0 ? '你赢了！' : '你输了'}
-            </h1>
-            <div className="result-panel__stats"><span>倍数 ×{gameOver.multiplier}</span></div>
-            <button onClick={leaveRoom} className="result-panel__button">返回大厅</button>
+        <div className="result-overlay" style={{ background: 'transparent', pointerEvents: 'none', alignItems: 'flex-start', paddingTop: 60, zIndex: 30 }}>
+          <div style={{
+            padding: '14px 24px', borderRadius: 14, color: 'white', fontSize: 15, fontWeight: 700,
+            background: gameOver.winner === 0 ? 'rgba(240,180,40,0.2)' : 'rgba(255,255,255,0.08)',
+            border: `1px solid ${gameOver.winner === 0 ? 'rgba(255,210,80,0.3)' : 'rgba(255,255,255,0.1)'}`,
+            pointerEvents: 'auto', textAlign: 'center', letterSpacing: '0.04em',
+          }}>
+            {gameOver.winner === 0 ? '你赢了！' : '你输了'} · 倍数 ×{gameOver.multiplier}
           </div>
+        </div>
+      )}
+
+      {notification && (
+        <div className="result-overlay" style={{ background: 'transparent', pointerEvents: 'none', alignItems: 'flex-end', paddingBottom: 80, zIndex: 30 }}>
+          <div style={{
+            padding: '10px 20px', borderRadius: 12, color: 'white', fontSize: 14, fontWeight: 600,
+            background: 'rgba(0,0,0,0.75)', border: '1px solid rgba(255,255,255,0.1)',
+            pointerEvents: 'auto',
+          }}>{notification}</div>
         </div>
       )}
     </div>

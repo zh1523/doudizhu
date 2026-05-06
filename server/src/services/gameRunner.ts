@@ -23,9 +23,6 @@ function rotateForViewer(state: GameState, viewerSeat: number): GameState {
     { ...state.players[(rot + 1) % 3] },
     { ...state.players[(rot + 2) % 3] },
   ]
-  players[0].id = 0
-  players[1].id = 1
-  players[2].id = 2
 
   const oldToNew = new Map<number, number>()
   oldToNew.set(rot, 0)
@@ -101,6 +98,7 @@ export function startRoomGame(room: Room, callbacks: GameCallbacks): Room {
 
     if (dealt >= 51) {
       clearInterval(dealInterval)
+      room._dealTimer = null
       // Phase 3: complete dealing → bidding
       gs = completeDealing(gs)
       room.gameState = gs
@@ -108,6 +106,7 @@ export function startRoomGame(room: Room, callbacks: GameCallbacks): Room {
       scheduleAITurnIfNeeded(room, callbacks)
     }
   }, 50)
+  room._dealTimer = dealInterval
 
   return room
 }
@@ -134,6 +133,7 @@ export function handleBid(room: Room, playerId: string, score: number, callbacks
     scheduleAITurnIfNeeded(room, callbacks)
   } else if (newState.phase === 'bidding') {
     callbacks.broadcastState(room)
+    scheduleAITurnIfNeeded(room, callbacks)
   }
 
   return room

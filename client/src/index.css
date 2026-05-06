@@ -934,10 +934,10 @@ select {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  gap: 24px;
   height: calc(100% - 70px);
-  padding: 16px;
+  padding: 20px 24px;
 }
 
 .lobby-stage {

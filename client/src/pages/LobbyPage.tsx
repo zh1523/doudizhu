@@ -1,11 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNetworkStore } from '../store/networkStore'
 
 export function LobbyPage() {
-  const { rooms, history, playerName, playerId, createRoom, joinRoom } = useNetworkStore()
+  const { rooms, history, playerName, playerId, createRoom, joinRoom, socket } = useNetworkStore()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [confirmMode, setConfirmMode] = useState<'pvp' | 'ai'>('ai')
+
+  useEffect(() => {
+    if (socket?.connected) {
+      socket.emit('lobby:history')
+    }
+  }, [socket?.connected])
 
   const historyList = (Array.isArray(history) ? history : []) as Array<Record<string, unknown>>
 
@@ -21,7 +27,13 @@ export function LobbyPage() {
   }
 
   const formatMode = (mode: string) => (mode === 'ai' ? 'AI 对局' : '玩家对局')
-  const formatTime = (value: unknown) => String(value ?? '').slice(0, 19).replace('T', ' ')
+  const formatTime = (value: unknown) => String(value ?? '').slice(0, 16).replace('T', ' ')
+
+  type HistoryPlayer = { name: string; isLandlord: boolean; won: boolean }
+  function parsePlayers(raw: unknown): HistoryPlayer[] {
+    try { return JSON.parse(String(raw ?? '[]')) as HistoryPlayer[] }
+    catch { return [] }
+  }
 
   return (
     <div className="lobby-root">
@@ -119,9 +131,13 @@ export function LobbyPage() {
                 <div key={i} className="lobby-history-row">
                   <div className="lobby-history-row__main">
                     <span className="lobby-history-row__mode">{formatMode(String(h.mode ?? 'pvp'))}</span>
+                    <div className="flex flex-wrap gap-x-2 gap-y-0 text-xs" style={{ color: 'rgba(23,51,86,0.6)' }}>
+                      {parsePlayers(h.players).map((p, j) => (
+                        <span key={j}>{p.name}{p.isLandlord ? '👑' : ''}{p.won ? '✓' : '✗'}</span>
+                      ))}
+                    </div>
                     <span className="lobby-history-row__time">{formatTime(h.created_at)}</span>
                   </div>
-                  <span className="lobby-history-row__multi">x{Number(h.multiplier ?? 1)}</span>
                 </div>
               ))
             ) : (

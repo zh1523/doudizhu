@@ -47,7 +47,7 @@ const insertHistory = db.prepare(`
 `)
 
 const updateHistory = db.prepare(`
-  UPDATE game_history SET multiplier=?, bomb_count=?, winner=?, duration=?, status='finished'
+  UPDATE game_history SET players=?, multiplier=?, bomb_count=?, winner=?, duration=?, status='finished'
   WHERE room_id=? AND status='playing'
 `)
 
@@ -107,7 +107,7 @@ export function recordGame(
   winner: number,
   duration: number,
 ) {
-  updateHistory.run(multiplier, bombCount, winner, duration, roomId)
+  updateHistory.run(JSON.stringify(players), multiplier, bombCount, winner, duration, roomId)
 
   for (const p of players) {
     upsertStats.run(

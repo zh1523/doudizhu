@@ -138,6 +138,7 @@ export function leaveRoom(
   socket: Socket,
   io: Server,
   lobbyCtx: LobbyContext,
+  options?: { announce?: boolean; announceReason?: string },
 ) {
   const player = lobbyCtx.players.get(socket.id)
   if (!player || !player.roomId) return
@@ -154,13 +155,19 @@ export function leaveRoom(
   socket.leave(room.id)
   socket.emit('room:left')
 
+  // Stop any running deal animation
+  if (room._dealTimer) {
+    clearInterval(room._dealTimer)
+    room._dealTimer = null
+  }
+
   // AI room: delete when human leaves (AI can't play alone)
   if (room.players.length === 0 || room.mode === 'ai') {
     room.players.length = 0
     removeRedisRoom(room.id)
     lobbyCtx.rooms.delete(room.id)
   } else {
-    // PvP: if game was in progress, reset to waiting (game can't continue with missing player)
+    // PvP: if game was in progress, reset to waiting
     if (room.phase === 'playing') {
       room.phase = 'waiting'
       room.gameState = null
@@ -170,6 +177,12 @@ export function leaveRoom(
     room.players.forEach((p, i) => { p.seat = i })
     syncRoom(room.id, toRoomRedisData(room))
     io.to(room.id).emit('room:update', roomInfo(room))
+    if (options?.announce) {
+      io.to(room.id).emit('room:player_left', {
+        name: player.name,
+        reason: options.announceReason || 'disconnect',
+      })
+    }
   }
   broadcastLobby(io, lobbyCtx)
 }
@@ -178,6 +191,7 @@ export function handleDisconnect(
   socket: Socket,
   io: Server,
   lobbyCtx: LobbyContext,
+  reason?: string,
 ) {
   const player = lobbyCtx.players.get(socket.id)
   if (!player) return
@@ -185,7 +199,10 @@ export function handleDisconnect(
   player.isOnline = false
 
   if (player.roomId) {
-    leaveRoom(socket, io, lobbyCtx)
+    leaveRoom(socket, io, lobbyCtx, {
+      announce: true,
+      announceReason: reason || 'disconnect',
+    })
   }
 
   lobbyCtx.players.delete(socket.id)

@@ -110,3 +110,7 @@ export async function getAllRooms(): Promise<RoomRedisData[]> {
   const hash = await hgetall(ROOMS_KEY)
   return Object.values(hash).map(raw => JSON.parse(raw) as RoomRedisData)
 }
+
+export async function clearAllRooms(): Promise<void> {
+  await delKey(ROOMS_KEY)
+}

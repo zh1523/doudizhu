@@ -10,8 +10,8 @@ export default function OnlineApp() {
   // Auto-connect on mount
   useEffect(() => {
     if (!socket) {
-      const savedName = localStorage.getItem('ddz_name') || `玩家${Math.floor(Math.random() * 9000) + 1000}`
-      useNetworkStore.getState().connect(savedName)
+      const name = `玩家${Math.floor(Math.random() * 9000) + 1000}`
+      useNetworkStore.getState().connect(name)
     }
   }, [])
 

@@ -12,6 +12,7 @@ export interface Room {
   gameState: GameState | null
   createdAt: Date
   gameStartTime: Date | null
+  _dealTimer?: ReturnType<typeof setInterval> | null
 }
 
 export function createRoom(id: string, mode: RoomMode): Room {

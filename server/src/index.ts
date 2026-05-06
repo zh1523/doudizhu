@@ -5,7 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Player } from './models/player.js'
 import type { Room } from './models/room.js'
-import { initRedis } from './services/redis.js'
+import { initRedis, clearAllRooms } from './services/redis.js'
 import { recordGame } from './services/history.js'
 import { syncRoom } from './services/redis.js'
 import { rotateForViewer } from './services/gameRunner.js'
@@ -18,8 +18,8 @@ const app = express()
 const httpServer = createServer(app)
 const io = new Server(httpServer, {
   cors: { origin: '*' },
-  pingTimeout: 60000,
-  pingInterval: 10000,
+  pingTimeout: 10000,
+  pingInterval: 5000,
 })
 
 // === 状态 ===
@@ -120,15 +120,16 @@ io.on('connection', (socket) => {
   registerRoomHandlers(io, socket, lobbyCtx, { roomCounter }, gameCallbacks)
   registerGameHandlers(io, socket, lobbyCtx, (roomId) => lobbyCtx.rooms.get(roomId) ?? rooms.get(roomId), gameCallbacks)
 
-  socket.on('disconnect', () => {
-    console.log(`[断开] ${socket.id}`)
-    handleDisconnect(socket, io, lobbyCtx)
+  socket.on('disconnect', (reason: string) => {
+    console.log(`[断开] ${socket.id} (${reason})`)
+    handleDisconnect(socket, io, lobbyCtx, reason)
   })
 })
 
 // === 启动 ===
 async function start() {
   await initRedis()
+  await clearAllRooms()
   const PORT = process.env.PORT || 3000
   httpServer.listen(PORT, () => {
     console.log(`斗地主服务端启动 http://localhost:${PORT}`)

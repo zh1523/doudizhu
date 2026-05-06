@@ -45,6 +45,7 @@ interface NetworkStore {
   gameState: GameState | null
   gameOver: GameOverData | null
   history: unknown[]
+  notification: string | null
 
   connect: (name: string) => void
   setPage: (page: Page) => void
@@ -68,6 +69,7 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
   gameState: null,
   gameOver: null,
   history: [],
+  notification: null,
 
   connect: (name: string) => {
     const socket = io('/', {
@@ -75,7 +77,18 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     })
 
     socket.on('connect', () => {
-      socket.emit('lobby:join', { name })
+      const safeUUID = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+      const clientId = `web_${safeUUID}`
+      socket.emit('lobby:join', { name, clientId })
+    })
+
+    // Clean disconnect on tab close (avoid ping timeout wait)
+    window.addEventListener('beforeunload', () => {
+      if (socket.connected) {
+        socket.disconnect()
+      }
     })
 
     socket.on('lobby:joined', ({ playerId, name: _name }) => {
@@ -95,7 +108,14 @@ export const useNetworkStore = create<NetworkStore>((set, get) => ({
     })
 
     socket.on('room:update', (room: RoomData) => {
-      set({ currentRoom: room })
+      // Clear gameState when room goes back to waiting, but keep gameOver for win/loss display
+      set({ currentRoom: room, gameState: room.phase === 'waiting' ? null : get().gameState })
+    })
+
+    socket.on('room:player_left', ({ name, reason }: { name: string; reason?: string }) => {
+      const reasonText = reason === 'ping timeout' ? '连接超时' : '退出'
+      set({ notification: `玩家 ${name} 已离开（${reasonText}）` })
+      setTimeout(() => set({ notification: null }), 4000)
     })
 
     socket.on('room:left', () => {

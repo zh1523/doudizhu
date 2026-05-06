@@ -11,9 +11,17 @@ export interface LobbyContext {
   rooms: Map<string, Room>
 }
 
+function generatePlayerId(socketId: string, clientId: string | undefined, ctx: LobbyContext): string {
+  const baseId = (clientId && clientId.trim()) || `${socketId}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const used = new Set(Array.from(ctx.players.values()).map(p => p.id))
+  if (!used.has(baseId)) return baseId
+  return `${baseId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+}
+
 export function registerLobbyHandlers(io: Server, socket: Socket, ctx: LobbyContext) {
-  socket.on('lobby:join', ({ name }: { name: string }) => {
-    const player = createPlayer(socket.id, socket.id, name || '玩家')
+  socket.on('lobby:join', ({ name, clientId }: { name: string; clientId?: string }) => {
+    const playerId = generatePlayerId(socket.id, clientId, ctx)
+    const player = createPlayer(playerId, socket.id, name || '玩家')
     ctx.players.set(socket.id, player)
     ctx.socketToPlayer.set(socket.id, player.id)
     socket.emit('lobby:joined', { playerId: player.id, name: player.name })
