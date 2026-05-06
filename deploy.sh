@@ -1,68 +1,59 @@
 #!/bin/bash
-# 斗地主部署脚本（在服务器上执行）
-# 用法: bash deploy.sh [nginx配置文件路径]
-# 首次部署: 先在项目根目录 npm run build，然后传 dist/ 到服务器
-
+# 斗地主一键部署脚本（在服务器项目根目录执行）
 set -e
 
-# ========== 修改这里 ==========
-DOMAIN="你的域名.com"          # 改成你的域名
-SERVER_DIR="/var/www/doudizhu" # 网站文件目录
-NGINX_CONF="/etc/nginx/conf.d/doudizhu.conf"
+# ========== 配置区 ==========
+DOMAIN="${DOMAIN:-你的域名或IP}"         # 环境变量覆盖，或直接改这里
+NGINX_CONF_DIR="/etc/nginx/conf.d"
 # ==============================
 
-echo "=== 部署斗地主 ==="
+cd "$(dirname "$0")"
 
-# 1. 复制文件
-echo "[1/4] 复制网站文件..."
-sudo mkdir -p $SERVER_DIR
-sudo cp -r ./dist/* $SERVER_DIR/
-sudo chown -R www-data:www-data $SERVER_DIR 2>/dev/null || sudo chown -R nginx:nginx $SERVER_DIR 2>/dev/null
+echo "=== [1/5] 拉取最新代码 ==="
+git pull
 
-# 2. 生成 Nginx 配置
-if [ ! -f "$NGINX_CONF" ]; then
-  echo "[2/4] 创建 Nginx 配置..."
-  sudo tee $NGINX_CONF > /dev/null << 'NGINX_EOF'
-server {
-    listen 80;
-    server_name DOMAIN_PLACEHOLDER;
+echo "=== [2/5] 构建前端 ==="
+cd client
+npm install --production=false
+npm run build
+cd ..
 
-    root SERVER_DIR_PLACEHOLDER;
-    index index.html;
+echo "=== [3/5] 构建服务端 ==="
+cd server
+npm install --production=false
+npm run build
+cd ..
 
-    location /assets/ {
-        expires 30d;
-        add_header Cache-Control "public, immutable";
-    }
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    gzip on;
-    gzip_types text/css application/javascript text/html;
-    gzip_min_length 256;
-}
-NGINX_EOF
-
-  sudo sed -i "s|DOMAIN_PLACEHOLDER|$DOMAIN|g" $NGINX_CONF
-  sudo sed -i "s|SERVER_DIR_PLACEHOLDER|$SERVER_DIR|g" $NGINX_CONF
-  echo "  Nginx 配置已创建"
+echo "=== [4/5] 启动/重启服务 ==="
+export PM2_HOME="$HOME/.pm2"
+if ! command -v pm2 &>/dev/null; then
+  echo "安装 PM2..."
+  npm install -g pm2
+fi
+if pm2 describe doudizhu >/dev/null 2>&1; then
+  pm2 reload server/ecosystem.config.cjs --update-env
 else
-  echo "[2/4] Nginx 配置已存在，跳过"
+  pm2 start server/ecosystem.config.cjs
+fi
+pm2 save
+# 首次部署需执行: pm2 startup
+# 如果没安装过: sudo env PATH=$PATH pm2 startup
+
+echo "=== [5/5] 配置 Nginx ==="
+if [ -d "$NGINX_CONF_DIR" ]; then
+  sudo cp nginx-doudizhu.conf "$NGINX_CONF_DIR/doudizhu.conf"
+  sudo sed -i "s/doudizhu.example.com/$DOMAIN/g" "$NGINX_CONF_DIR/doudizhu.conf"
+  sudo nginx -t && sudo systemctl reload nginx
+  echo "Nginx 已重载"
+else
+  echo "未检测到 Nginx，跳过。直接访问 http://$DOMAIN:3000"
 fi
 
-# 3. 测试并重载 Nginx
-echo "[3/4] 重载 Nginx..."
-sudo nginx -t && sudo systemctl reload nginx
-
-# 4. HTTPS (可选)
-if ! command -v certbot &> /dev/null; then
-  echo "[4/4] 提示: 执行 'apt install certbot python3-certbot-nginx' 安装 certbot"
-  echo "  然后执行 'sudo certbot --nginx -d $DOMAIN' 开启 HTTPS"
-else
-  echo "[4/4] certbot 已安装，如需 HTTPS 执行: sudo certbot --nginx -d $DOMAIN"
-fi
-
+echo ""
 echo "=== 部署完成 ==="
-echo "访问 http://$DOMAIN 查看效果"
+echo "访问 http://$DOMAIN"
+echo ""
+echo "常用命令:"
+echo "  pm2 status         查看进程状态"
+echo "  pm2 logs doudizhu  查看日志"
+echo "  pm2 restart doudizhu  重启服务"
